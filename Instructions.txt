@@ -1,0 +1,115 @@
+# Ubuntu 22.04 Vs Nominatim 4.2.3
+
+
+# Setting up the computer for the
+
+sudo apt update -qq
+sudo apt install -y php-cgi
+sudo apt install -y build-essential cmake g++ libboost-dev libboost-system-dev \
+                    libboost-filesystem-dev libexpat1-dev zlib1g-dev \
+                    libbz2-dev libpq-dev liblua5.3-dev lua5.3 \
+                    postgresql-server-dev-14 postgresql-14-postgis-3 \
+                    postgresql-contrib-14 postgresql-14-postgis-3-scripts \
+                    php-cli php-pgsql php-intl libicu-dev python3-dotenv \
+                    python3-psycopg2 python3-psutil python3-jinja2 \
+                    python3-icu python3-datrie
+
+
+# Create a New User called nominate to Install Nominatim
+# Activate sudo for nomination user. With no password access
+# Give the user Nominatim sudo privileges by editing visudo to include new user
+# Ensure the directory has the right accessibility right
+# And set username and username to new directory of Nominatim.
+
+
+sudo useradd -d /srv/nominatim -s /bin/bash -m nominatim
+visudo
+Nominatim ALL = (ALL) NOPASSWD: ALL
+export USERNAME=nominatim
+export USERHOME=/srv/nominatim
+chmod a+x $USERHOME
+
+
+
+# Set up Apache web server
+# And restart apache2
+
+mkdir $USERHOME/nominatim-project
+mkdir $USERHOME/nominatim-project/website
+sudo apt install -y apache2 libapache2-mod-php
+sudo tee /etc/apache2/conf-available/nominatim.conf << EOFAPACHECONF
+<Directory "$USERHOME/nominatim-project/website">
+  Options FollowSymLinks MultiViews
+  AddType text/html   .php
+  DirectoryIndex search.php
+  Require all granted
+</Directory>
+
+Alias /nominatim $USERHOME/nominatim-project/website
+EOFAPACHECONF
+sudo a2enconf nominatim
+sudo systemctl restart apache2
+
+
+# Modify Posgresql for optimal import session
+# If system returns error, cd into root directory using (cd ~)
+nano /etc/postgresql/14/main/postgresql.conf
+sudo -u postgres createuser -s $USERNAME
+sudo -u postgres createuser www-data
+sudo systemctl restart postgresql
+
+shared_buffers = 2GB
+maintenance_work_mem = (10GB)
+autovacuum_work_mem = 2GB
+work_mem = (50MB)
+effective_cache_size = (24GB)
+synchronous_commit = off
+max_wal_size = 1GB
+checkpoint_timeout = 10min
+checkpoint_completion_target = 0.9
+autovacuum_max_workers = 1
+
+#change this back to on after the import.
+fsync = off
+full_page_writes = off
+
+
+
+
+
+# Switch to user Nominatim
+# Download nominate
+# build nominate
+
+SU nominatim
+export USERNAME=nominatim
+export USERHOME=/srv/nominatim
+git clone --recursive https://github.com/openstreetmap/Nominatim.git
+wget -O Nominatim/data/country_osm_grid.sql.gz https://nominatim.org/data/country_grid.sql.gz
+mkdir build
+cd build
+cmake ../Nominatim
+make
+sudo make install
+export PATH=<install root>/bin:$PATH
+
+
+
+#install Wikipedia
+#instal Geofabric for country
+# allow it run
+mkdir ~/nominatim-planet
+cd ~/nominatim-planet
+export PROJECT_DIR=~/nominatim-planet
+cd $PROJECT_DIR
+wget https://nominatim.org/data/wikimedia-importance.sql.gz
+Wget https://***your country pbf file***
+nominatim import --osm-file **your contry pbf file** 2>&1 | tee setup.log
+nominatim admin --check-database
+Nominatim admin —-continue-indexing
+Nominatim admin —-check-database
+
+
+#Test your installation
+Https://**youripAddress**/nominatim/status
+Https://**youripAddress**/nominatim/reverse?lat=1.232323&lon=3.25424
